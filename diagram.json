@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "author": "Antigravity",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-hc-sr04", "id": "ultrasonic", "top": -150, "left": -120, "attrs": {} },
+    { "type": "wokwi-ssd1306", "id": "oled", "top": -150, "left": 150, "attrs": { "i2cAddress": "0x3c" } },
+    { "type": "wokwi-led", "id": "ledSandar", "top": 88, "left": -156, "attrs": { "color": "red" } },
+    { "type": "wokwi-led", "id": "ledKosong", "top": 150, "left": -156, "attrs": { "color": "green" } },
+    { "type": "wokwi-buzzer", "id": "buzzer", "top": 128, "left": -255, "attrs": { "mode": "smooth" } }
+  ],
+  "connections": [
+    [ "esp:GND.1", "ultrasonic:GND", "black", [ "h-48", "v-76", "h-40" ] ],
+    [ "esp:5V", "ultrasonic:VCC", "red", [ "h-33.6", "v-92", "h-64.8" ] ],
+    [ "esp:D5", "ultrasonic:TRIG", "green", [ "h-9.6", "v-109", "h-79.2" ] ],
+    [ "esp:D18", "ultrasonic:ECHO", "yellow", [ "h24", "v-116", "h-136.8" ] ],
+
+    [ "esp:GND.2", "oled:GND", "black", [ "h31.2", "v-118", "h122.4" ] ],
+    [ "esp:3V3", "oled:VCC", "red", [ "h45.6", "v-102", "h110.4" ] ],
+    [ "esp:D21", "oled:SDA", "blue", [ "h88.8", "v-61.2", "h69.6" ] ],
+    [ "esp:D22", "oled:SCL", "orange", [ "h96", "v-46.8", "h62.4" ] ],
+
+    [ "esp:GND.3", "ledSandar:C", "black", [ "h-102", "v36", "h-18" ] ],
+    [ "esp:D26", "ledSandar:A", "green", [ "h-96", "v46", "h-24" ] ],
+
+    [ "esp:GND.1", "ledKosong:C", "black", [ "h-96", "v78", "h-24" ] ],
+    [ "esp:D27", "ledKosong:A", "red", [ "h-92", "v90", "h-28" ] ],
+
+    [ "esp:GND.2", "buzzer:1", "black", [ "h-126", "v58", "h-54" ] ],
+    [ "esp:D25", "buzzer:2", "orange", [ "h-124", "v48", "h-54" ] ]
+  ],
+  "dependencies": {}
+}

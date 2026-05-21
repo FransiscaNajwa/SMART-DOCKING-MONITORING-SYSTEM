@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Docking Monitoring System - Dermaga Nilam</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Urbanist:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=20260520-1">
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <header class="main-header">
+            <div class="header-titles">
+                <h1>SMART DOCKING MONITORING SYSTEM</h1>
+                <p class="subtitle">TERMINAL PETIKEMAS NILAM</p>
+            </div>
+            <div class="header-status">
+                <div class="live-tag"><span class="dot"></span> LIVE DATA DERMAGA</div>
+                <div id="clock" class="digital-clock">00:00:00</div>
+            </div>
+        </header>
+
+        <section class="upper-section">
+            <div class="panel visual-panel">
+                <div class="legend">
+                    <span class="leg-item"><span class="bullet b-hijau"></span> &gt; 200 cm</span>
+                    <span class="leg-item"><span class="bullet b-kuning"></span> 101 - 200 cm</span>
+                    <span class="leg-item"><span class="bullet b-merah"></span> 0 - 100 cm</span>
+                </div>
+
+                <div class="dock-area">
+                    <div class="pier-line">DINDING DERMAGA</div>
+                    <div id="ship-hull" class="ship state-kosong">
+                        <div class="ship-cabin"><i class="fa-solid fa-anchor"></i></div>
+                        <div class="ship-name">KAPAL PROTOTIPE</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel metrics-panel">
+                <div class="metric-box">
+                    <span class="panel-label"><i class="fa-solid fa-ruler-horizontal"></i> DISTANCE</span>
+                    <div class="main-number"><span id="web-jarak">0</span> <span class="unit">cm</span></div>
+                </div>
+
+                <div class="status-box">
+                    <div id="web-status" class="status-marquee status-m-kosong">
+                        MENUNGGU DATA...
+                    </div>
+                    <div class="signal-icon">
+                        <i id="wifi-icon" class="fa-solid fa-wifi icon-disconnected"></i>
+                    </div>
+                </div>
+
+                <div class="extra-metrics">
+                    <div class="sub-metric">
+                        <span class="sm-label">KECEPATAN DEKATI</span>
+                        <span class="sm-value" id="web-speed">0.00 m/s</span>
+                    </div>
+                    <div class="sub-metric">
+                        <span class="sm-label">DERMAGA SISI</span>
+                        <span class="sm-value" id="web-sisi">Nilam Utara</span>
+                    </div>
+                </div>
+
+                <div class="dock-selector">
+                    <label class="dock-selector-label" for="dashboard-sisi-input">INPUT LOKASI DERMAGA</label>
+                    <div class="dock-selector-controls">
+                        <select id="dashboard-sisi-input" class="dock-selector-input">
+                            <option value="Nilam Utara">Nilam Utara</option>
+                            <option value="Nilam Selatan">Nilam Selatan</option>
+                        </select>
+                        <button id="dashboard-sisi-save" class="dock-selector-button" type="button">Simpan</button>
+                    </div>
+                    <div id="dashboard-sisi-feedback" class="dock-selector-feedback">Lokasi dermaga aktif: Nilam Utara</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="lower-section">
+            <div class="panel logs-panel">
+                <h3 class="section-title">
+                    <i class="fa-solid fa-list-ul"></i> DATA LOGS
+                    <a href="export_excel.php" class="btn-export" target="_blank">
+                        <i class="fa-solid fa-file-excel"></i> Export Excel
+                    </a>
+                </h3>
+                <div id="log-container" class="log-list">
+                    <div class="log-item">[SISTEM] Memulai penyiapan dashboard lokal Laragon...</div>
+                </div>
+            </div>
+
+            <div class="panel logic-panel">
+                <h3 class="section-title"><i class="fa-solid fa-gears"></i> LOGIKA STATUS & INDIKATOR <i class="fa-solid fa-gear gear-icon-right"></i></h3>
+                <div class="logic-table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Jarak Sensor</th>
+                                <th>Status Sistem</th>
+                                <th>Indikator Aktif</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="row-sandar">
+                                <td>0 - 100 cm</td>
+                                <td>KAPAL SANDAR</td>
+                                <td>LED merah menyala sekali saat terdeteksi, lalu mati</td>
+                            </tr>
+                            <tr class="row-lepas">
+                                <td>101 - 200 cm</td>
+                                <td>MULAI LEPAS...</td>
+                                <td>Buzzer 700 Hz berbunyi berkala, LED nonaktif</td>
+                            </tr>
+                            <tr class="row-kosong">
+                                <td>&gt; 200 cm</td>
+                                <td>KOSONG / PERGI</td>
+                                <td>LED hijau menyala sekali saat terdeteksi, lalu mati</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="script.js?v=20260520-1"></script>
+</body>
+</html>

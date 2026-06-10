@@ -39,7 +39,21 @@
   "C_Cpp_Runner.linkerArgs": [],
   "C_Cpp_Runner.includePaths": [],
   "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+  "C_Cpp.default.compilerPath": "C:/Users/HP/.platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-g++.exe",
+  "C_Cpp.default.intelliSenseMode": "windows-gcc-x64",
+  "C_Cpp.default.defines": [
+    "PLATFORMIO=60119",
+    "ARDUINO_ESP32_DEV",
+    "ARDUINO_ARCH_ESP32",
+    "ESP32",
+    "F_CPU=240000000L",
+    "ARDUINO=10812",
+    "ARDUINO_VARIANT=\"esp32\"",
+    "ARDUINO_BOARD=\"Espressif ESP32 Dev Module\"",
+    "ARDUINO_PARTITION_default"
+  ],
   "C_Cpp.default.includePath": [
+    "${workspaceFolder}",
     "${workspaceFolder}/src",
     "${workspaceFolder}/.pio/libdeps/esp32dev/LiquidCrystal_I2C",
     "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src",
@@ -47,7 +61,10 @@
     "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
     "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
     "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/cores/esp32",
-    "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/variants/esp32"
+    "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/variants/esp32",
+    "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/libraries/**",
+    "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/dio_qspi/include",
+    "C:/Users/HP/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/**"
   ],
   "C_Cpp.default.configurationProvider": "platformio.platformio-ide",
   "files.associations": {

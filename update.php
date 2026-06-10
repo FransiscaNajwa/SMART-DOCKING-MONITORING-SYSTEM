@@ -49,29 +49,51 @@ function simpanSampleTerakhir($jarak, $timestampMs) {
     file_put_contents($samplePath, json_encode($payload));
 }
 
+function bacaStatusTransisiTerakhir() {
+    $realtimePath = __DIR__ . DIRECTORY_SEPARATOR . "data_jarak.txt";
+    if (!file_exists($realtimePath)) {
+        return null;
+    }
+
+    $rawRealtime = file_get_contents($realtimePath);
+    $realtime = json_decode((string) $rawRealtime, true);
+    if (!is_array($realtime) || !isset($realtime["status"])) {
+        return null;
+    }
+
+    $status = (string) $realtime["status"];
+    if ($status === "MULAI SANDAR" || $status === "MULAI LEPAS...") {
+        return $status;
+    }
+
+    return null;
+}
+
 // 3. Mengecek apakah ada kiriman data 'jarak' dari ESP32 Wokwi
 if (isset($_GET['jarak'])) {
     $jarak = intval($_GET['jarak']); // Memastikan data berupa angka bulat
     
-    // Sisi dermaga dikirim dinamis dari ESP32, default: 'Nilam Utara'
+    // Sisi dermaga dikirim dinamik dari ESP32, default: 'Nilam Utara'
     $sisiDashboard = bacaSisiDashboard();
     $sisi = $sisiDashboard ?: (isset($_GET['sisi']) ? preg_replace('/[^a-zA-Z0-9_\- ]/', '', $_GET['sisi']) : 'Nilam Utara');
     $sisi = str_replace('_', ' ', $sisi); // Bersihkan format underscore jika ada
 
-    // Tentukan status berdasarkan logika jarak
-    $status = "KOSONG / PERGI";
-    if ($jarak > 0 && $jarak <= 100) {
-        $status = "KAPAL SANDAR";
-    } else if ($jarak > 100 && $jarak <= 200) {
-        $status = "MULAI LEPAS...";
+    // =========================================================================
+    // PERBAIKAN UTAMA: Ambil status MURNI dari kiriman Wokwi ($_GET['status'])
+    // =========================================================================
+    if (isset($_GET['status']) && trim($_GET['status']) !== '') {
+        $status = trim($_GET['status']); 
+        // Bersihkan format jika Wokwi mengirim dengan underscore (misal: MULAI_LEPAS...)
+        $status = str_replace('_', ' ', $status); 
+    } else {
+        $status = "";
     }
 
     // Inisialisasi kecepatan
     $kecepatan = 0.0;
     $waktuBaruMs = (int) round(microtime(true) * 1000);
 
-    // Hitung kecepatan dari sample terakhir real-time, bukan dari log DB,
-    // agar perubahan sub-detik tetap terbaca walau log DB difilter.
+    // Hitung kecepatan dari sample terakhir real-time
     $sampleTerakhir = bacaSampleTerakhir();
     if ($sampleTerakhir && isset($sampleTerakhir['jarak'], $sampleTerakhir['timestamp_ms'])) {
         $jarakSampleLama = intval($sampleTerakhir['jarak']);
@@ -84,12 +106,32 @@ if (isset($_GET['jarak'])) {
             $kecepatan = round($kecepatan, 2);
         }
     }
+
+    if ($status === "") {
+        if ($jarak >= 0 && $jarak <= 150) {
+            $status = "KAPAL SANDAR";
+        } else if ($jarak > 200) {
+            $status = "LEPAS";
+        } else if ($sampleTerakhir && isset($sampleTerakhir['jarak'])) {
+            $jarakSampleLama = intval($sampleTerakhir['jarak']);
+            $deltaJarak = $jarak - $jarakSampleLama;
+            if ($deltaJarak >= 2) {
+                $status = "MULAI LEPAS...";
+            } else if ($deltaJarak <= -2) {
+                $status = "MULAI SANDAR";
+            } else {
+                $status = bacaStatusTransisiTerakhir() ?: "TRANSISI";
+            }
+        } else {
+            $status = "TRANSISI";
+        }
+    }
     
-    // Ambil record terakhir dari database untuk menghitung kecepatan & mendeteksi perubahan data
+    // Ambil record terakhir dari database untuk mendeteksi perubahan data
     $query = "SELECT * FROM `tb_log_kapal` ORDER BY `id` DESC LIMIT 1";
     $result = $conn->query($query);
     
-    $shouldInsert = true; // Flag untuk menentukan apakah data perlu dicatat ke log database
+    $shouldInsert = true; // Flag log database
 
     if ($result && $result->num_rows > 0) {
         $lastRow = $result->fetch_assoc();
@@ -99,19 +141,14 @@ if (isset($_GET['jarak'])) {
         $waktuBaru = time();
         
         $selisihWaktu = $waktuBaru - $waktuLama; // Selisih dalam detik
-        $selisihJarak = $jarakLama - $jarak; // Selisih jarak (cm). Positif = mendekat, Negatif = menjauh
+        $selisihJarak = $jarakLama - $jarak; 
 
-        // Jika jarak sama persis dan hasil kecepatan 0,
-        // tidak perlu simpan log baru karena tidak ada perubahan nyata.
+        // Jika jarak sama persis dan hasil kecepatan 0, tidak perlu simpan log baru
         if ($jarak === $jarakLama && abs($kecepatan) < 0.00001) {
             $shouldInsert = false;
         }
 
         // --- FILTER OPTIMALISASI DATABASE LOGS ---
-        // Kita hanya mencatat log baru ke database jika:
-        // 1. Status kapal berubah (misalnya dari KOSONG ke LEPAS, atau dari LEPAS ke SANDAR)
-        // 2. Ada perubahan posisi yang cukup signifikan (selisih >= 3 cm)
-        // 3. Waktu sudah berlalu lebih dari 10 detik sejak log terakhir (sebagai heartbeat berkala)
         if ($status === $statusLama && abs($selisihJarak) < 3 && $selisihWaktu < 10) {
             $shouldInsert = false; // Hindari duplikasi log yang identik
         }
@@ -128,11 +165,10 @@ if (isset($_GET['jarak'])) {
     simpanSampleTerakhir($jarak, $waktuBaruMs);
 
     // 4. Menyimpan status real-time ke data_jarak.txt dalam format JSON
-    // Dashboard bisa mem-parsing data ini dengan sangat cepat & presisi tanpa membebani DB
     $realtimeData = [
         "jarak" => $jarak,
         "sisi" => $sisi,
-        "status" => $status,
+        "status" => $status, // Status murni Wokwi berhasil di-passing ke teks stream!
         "kecepatan" => $kecepatan,
         "timestamp" => date("Y-m-d H:i:s"),
         "timestamp_ms" => $waktuBaruMs

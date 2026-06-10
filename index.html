@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Urbanist:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=20260520-1">
+    <link rel="stylesheet" href="style.css?v=20260522-3">
 </head>
 <body>
 
@@ -27,9 +27,9 @@
         <section class="upper-section">
             <div class="panel visual-panel">
                 <div class="legend">
-                    <span class="leg-item"><span class="bullet b-hijau"></span> &gt; 200 cm</span>
-                    <span class="leg-item"><span class="bullet b-kuning"></span> 101 - 200 cm</span>
-                    <span class="leg-item"><span class="bullet b-merah"></span> 0 - 100 cm</span>
+                    <span class="leg-item"><span class="bullet b-merah"></span> 0 - 150 cm = KAPAL SANDAR</span>
+                    <span class="leg-item"><span class="bullet b-kuning"></span> 151 - 200 cm = TRANSISI</span>
+                    <span class="leg-item"><span class="bullet b-hijau"></span> &gt; 200 cm = LEPAS</span>
                 </div>
 
                 <div class="dock-area">
@@ -58,10 +58,6 @@
 
                 <div class="extra-metrics">
                     <div class="sub-metric">
-                        <span class="sm-label">KECEPATAN DEKATI</span>
-                        <span class="sm-value" id="web-speed">0.00 m/s</span>
-                    </div>
-                    <div class="sub-metric">
                         <span class="sm-label">DERMAGA SISI</span>
                         <span class="sm-value" id="web-sisi">Nilam Utara</span>
                     </div>
@@ -89,8 +85,20 @@
                         <i class="fa-solid fa-file-excel"></i> Export Excel
                     </a>
                 </h3>
-                <div id="log-container" class="log-list">
-                    <div class="log-item">[SISTEM] Memulai penyiapan dashboard lokal Laragon...</div>
+                <div class="log-list">
+                    <table class="log-table">
+                        <thead>
+                            <tr>
+                                <th>Waktu</th>
+                                <th>Sisi</th>
+                                <th>Jarak</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="log-container">
+                            <tr><td colspan="4" style="text-align:center; padding:10px;">[SISTEM] Memulai penyiapan dashboard lokal Laragon...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -106,20 +114,20 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr class="row-sandar">
-                                <td>0 - 100 cm</td>
+                            <tr id="logic-row-sandar" class="row-sandar">
+                                <td>0 - 150 cm</td>
                                 <td>KAPAL SANDAR</td>
-                                <td>LED merah menyala sekali saat terdeteksi, lalu mati</td>
+                                <td>LED hijau menyala stabil selama status sandar</td>
                             </tr>
-                            <tr class="row-lepas">
-                                <td>101 - 200 cm</td>
-                                <td>MULAI LEPAS...</td>
+                            <tr id="logic-row-transisi" class="row-lepas">
+                                <td>151 - 200 cm</td>
+                                <td>Jarak naik: MULAI LEPAS...<br>Jarak turun: MULAI SANDAR</td>
                                 <td>Buzzer 700 Hz berbunyi berkala, LED nonaktif</td>
                             </tr>
-                            <tr class="row-kosong">
+                            <tr id="logic-row-lepas" class="row-kosong">
                                 <td>&gt; 200 cm</td>
-                                <td>KOSONG / PERGI</td>
-                                <td>LED hijau menyala sekali saat terdeteksi, lalu mati</td>
+                                <td>LEPAS</td>
+                                <td>LED merah menyala stabil selama status lepas</td>
                             </tr>
                         </tbody>
                     </table>
@@ -128,6 +136,6 @@
         </section>
     </div>
 
-    <script src="script.js?v=20260520-1"></script>
+    <script src="script.js?v=20260522-5"></script>
 </body>
 </html>

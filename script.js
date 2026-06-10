@@ -1,295 +1,221 @@
-const jarakText = document.getElementById('web-jarak');
-const statusBox = document.getElementById('web-status');
-const wifiIcon = document.getElementById('wifi-icon');
-const shipHull = document.getElementById('ship-hull');
-const logContainer = document.getElementById('log-container');
-const webSpeed = document.getElementById('web-speed');
-const webSisi = document.getElementById('web-sisi');
-const sisiInput = document.getElementById('dashboard-sisi-input');
-const sisiSaveButton = document.getElementById('dashboard-sisi-save');
-const sisiFeedback = document.getElementById('dashboard-sisi-feedback');
-const sisiGetUrl = 'get_sisi.php';
-const sisiSetUrl = 'set_sisi.php';
+// ==========================================
+// MONITORING DERMAGA REAL-TIME JAVASCRIPT
+// ==========================================
 
-const rowSandar = document.querySelector('.row-sandar');
-const rowLepas = document.querySelector('.row-lepas');
-const rowKosong = document.querySelector('.row-kosong');
-let realtimeStream = null;
+let liveEventSource = null;
+let fallbackPollingId = null;
+let lastRealtimeTimestamp = null;
+let logsPollingId = null;
+const THRESHOLD_SANDAR_MAX = 150;
+const THRESHOLD_LEPAS_MIN = 200;
 
-let lastJarak = -1;
-let lastStatus = "";
-let lastRealtimeTimestamp = "";
-let lastRealtimeMs = 0;
-let currentSisi = "Nilam Utara";
+document.addEventListener("DOMContentLoaded", function () {
+    startDigitalClock();
+    startRealtimeUpdates();
 
-function getAllowedSisi() {
-    if (!sisiInput) return ["Nilam Utara", "Nilam Selatan"];
-    const options = Array.from(sisiInput.options || []).map(option => option.value.trim()).filter(Boolean);
-    return options.length ? options : ["Nilam Utara", "Nilam Selatan"];
+    const saveButton = document.getElementById("dashboard-sisi-save");
+    if (saveButton) {
+        saveButton.addEventListener("click", saveDermagaLocation);
+    }
+});
+
+// 1. FUNGSI JAM DIGITAL UTAMA
+function startDigitalClock() {
+    setInterval(() => {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('id-ID', { hour12: false });
+        const clockElement = document.getElementById("clock");
+        if (clockElement) clockElement.innerText = timeString;
+    }, 1000);
 }
 
-function updateShipPosition(jarak) {
-    if (!shipHull) return;
-
-    const minTop = 26;
-    const maxTop = 210;
-    const maxVisualDistance = 300;
-    const safeJarak = Math.max(0, Number.parseInt(jarak, 10) || 0);
-    const clampedJarak = Math.min(safeJarak, maxVisualDistance);
-    const ratio = clampedJarak / maxVisualDistance;
-    const top = minTop + ((maxTop - minTop) * ratio);
-
-    shipHull.style.setProperty('--ship-top', `${top.toFixed(0)}px`);
+function startRealtimeUpdates() {
+    fetchLatestDockData();
+    connectRealtimeStream();
+    fetchLatestLogs();
+    if (logsPollingId === null) {
+        logsPollingId = setInterval(fetchLatestLogs, 3000);
+    }
 }
 
-function processRealtimeData(data) {
-    const jarakAsli = parseInt(data.jarak, 10);
-    if (isNaN(jarakAsli)) return;
-
-    wifiIcon.className = "fa-solid fa-wifi icon-connected";
-    jarakText.innerText = jarakAsli;
-    updateShipPosition(jarakAsli);
-
-    if (typeof data.sisi === "string" && data.sisi.trim() !== "") {
-        applySisiToUi(data.sisi.trim());
-    }
-
-    const incomingRealtimeMs = Number.parseInt(data.timestamp_ms, 10) || 0;
-    if (incomingRealtimeMs > lastRealtimeMs) {
-        lastRealtimeMs = incomingRealtimeMs;
-        lastRealtimeTimestamp = data.timestamp || lastRealtimeTimestamp;
-        ambilLogsDatabase();
-    } else if (data.timestamp && data.timestamp !== lastRealtimeTimestamp) {
-        lastRealtimeTimestamp = data.timestamp;
-        ambilLogsDatabase();
-    }
-
-    if (data.status !== lastStatus) {
-        lastStatus = data.status;
-        ambilLogsDatabase();
-    }
-
-    clearTableHighlights();
-    if (jarakAsli > 0 && jarakAsli <= 100) {
-        statusBox.innerText = "KAPAL SANDAR";
-        statusBox.className = "status-marquee status-m-sandar";
-        shipHull.className = "ship state-sandar";
-        rowSandar.className = "row-sandar row-active-sandar";
-    }
-    else if (jarakAsli > 100 && jarakAsli <= 200) {
-        statusBox.innerText = "MULAI LEPAS...";
-        statusBox.className = "status-marquee status-m-lepas";
-        shipHull.className = "ship state-lepas";
-        rowLepas.className = "row-lepas row-active-lepas";
-    }
-    else {
-        statusBox.innerText = "KOSONG / PERGI";
-        statusBox.className = "status-marquee status-m-kosong";
-        shipHull.className = "ship state-kosong";
-        rowKosong.className = "row-kosong row-active-kosong";
-    }
-
-    lastJarak = jarakAsli;
-}
-
-// Fallback polling jika browser/server tidak mendukung EventSource
-function ambilDataLokal() {
-    fetch('data_jarak.txt?t=' + new Date().getTime(), { cache: 'no-store' })
-        .then(response => {
-            if (!response.ok) throw new Error("HTTP Error");
-            return response.json();
-        })
-        .then(processRealtimeData)
-        .catch(() => {
-            wifiIcon.className = "fa-solid fa-wifi icon-disconnected";
-            statusBox.innerText = "SERVER OFFLINE";
-            statusBox.className = "status-marquee status-m-kosong";
-        });
-}
-
-function startRealtimeStream() {
-    if (!window.EventSource) {
-        return false;
-    }
-
-    if (realtimeStream) {
-        realtimeStream.close();
-    }
-
-    realtimeStream = new EventSource('stream.php');
-    realtimeStream.onmessage = event => {
-        try {
-            const data = JSON.parse(event.data);
-            processRealtimeData(data);
-        } catch (error) {
-            console.error('Gagal memproses stream real-time:', error);
-        }
-    };
-
-    realtimeStream.onerror = () => {
-        wifiIcon.className = "fa-solid fa-wifi icon-disconnected";
-        realtimeStream.close();
-        realtimeStream = null;
-        setTimeout(() => {
-            startRealtimeStream();
-            ambilDataLokal();
-        }, 1500);
-    };
-
-    return true;
-}
-
-// Fungsi mengambil data log riwayat dari database secara berkala
-function ambilLogsDatabase() {
-    fetch('get_logs.php?t=' + new Date().getTime())
-        .then(response => {
-            if (!response.ok) throw new Error("HTTP Error");
-            return response.json();
-        })
-        .then(logs => {
-            logContainer.innerHTML = ''; // Kosongkan list log lama
-            
-            if (logs.length === 0) {
-                logContainer.innerHTML = '<div class="log-item" style="color: #64748b;">[SISTEM] Belum ada rekaman log kapal di database.</div>';
-                webSpeed.innerText = "0.00 m/s";
-                return;
-            }
-
-            const latestLog = logs[0];
-            const latestSpeed = Math.abs(Number.parseFloat(latestLog.kecepatan || 0));
-            webSpeed.innerText = latestSpeed.toFixed(2) + " m/s";
-
-            // Tampilkan baris demi baris log
-            logs.forEach(log => {
-                const logBaru = document.createElement('div');
-                logBaru.className = 'log-item';
-                
-                // Menentukan warna teks log berdasarkan status kejadian
-                let color = "#38bdf8"; // Biru cerah (default)
-                let label = "INFO";
-                
-                if (log.status === "KAPAL SANDAR") {
-                    color = "#10b981"; // Emerald Green
-                    label = "DOCK";
-                } else if (log.status === "MULAI LEPAS...") {
-                    color = "#f59e0b"; // Warning Amber
-                    label = "MOVE";
-                } else {
-                    color = "#64748b"; // Muted Slate Grey
-                    label = "IDLE";
-                }
-                
-                logBaru.style.color = color;
-                const kecepatan = Math.abs(Number.parseFloat(log.kecepatan || 0));
-                
-                // Format isi string log lengkap
-                logBaru.innerText = `[${log.timestamp}] ${label} | Sisi: ${log.sisi} | Jarak: ${log.jarak} cm | Kecep: ${kecepatan.toFixed(2)} m/s | ${log.status}`;
-                logContainer.appendChild(logBaru);
-            });
-        })
-        .catch(err => {
-            console.error("Gagal menarik log dari database:", err);
-        });
-}
-
-function clearTableHighlights() {
-    rowSandar.className = "row-sandar";
-    rowLepas.className = "row-lepas";
-    rowKosong.className = "row-kosong";
-}
-
-function applySisiToUi(sisi) {
-    const allowedSisi = getAllowedSisi();
-    currentSisi = allowedSisi.includes(sisi) ? sisi : sisi;
-    if (webSisi) webSisi.innerText = currentSisi;
-    if (sisiInput) {
-        const hasOption = Array.from(sisiInput.options || []).some(option => option.value === currentSisi);
-        if (hasOption) sisiInput.value = currentSisi;
-    }
-    if (sisiFeedback) sisiFeedback.innerText = `Lokasi dermaga aktif: ${currentSisi}`;
-}
-
-function loadConfiguredSisi() {
-    fetch(sisiGetUrl + '?t=' + new Date().getTime())
-        .then(response => {
-            if (!response.ok) throw new Error("HTTP Error");
-            return response.json();
-        })
-        .then(data => {
-            applySisiToUi(data.sisi || "Nilam Utara");
-        })
-        .catch(() => {
-            applySisiToUi("Nilam Utara");
-        });
-}
-
-function saveConfiguredSisi() {
-    if (!sisiInput) return;
-    const sisi = sisiInput.value.trim();
-    const allowedSisi = getAllowedSisi();
-    if (!allowedSisi.includes(sisi)) {
-        if (sisiFeedback) sisiFeedback.innerText = "Pilihan lokasi dermaga tidak valid.";
+function connectRealtimeStream() {
+    if (typeof EventSource === "undefined") {
+        ensureFallbackPolling();
         return;
     }
 
-    if (sisiFeedback) sisiFeedback.innerText = "Menyimpan lokasi dermaga...";
-    if (sisiSaveButton) sisiSaveButton.disabled = true;
+    if (liveEventSource) {
+        liveEventSource.close();
+    }
 
-    fetch(sisiSetUrl + '?sisi=' + encodeURIComponent(sisi) + '&t=' + new Date().getTime(), {
-        method: 'GET',
-        cache: 'no-store'
-    })
-        .then(response => {
-            if (!response.ok) throw new Error("HTTP Error");
-            return response.json();
-        })
+    liveEventSource = new EventSource("stream.php?t=" + Date.now());
+
+    liveEventSource.onmessage = function (event) {
+        try {
+            const data = JSON.parse(event.data);
+            applyRealtimeData(data);
+            stopFallbackPolling();
+        } catch (error) {
+            console.error("Gagal membaca stream realtime:", error);
+        }
+    };
+
+    liveEventSource.onerror = function () {
+        ensureFallbackPolling();
+    };
+}
+
+function ensureFallbackPolling() {
+    if (fallbackPollingId !== null) return;
+    fallbackPollingId = setInterval(fetchLatestDockData, 1000);
+}
+
+function stopFallbackPolling() {
+    if (fallbackPollingId === null) return;
+    clearInterval(fallbackPollingId);
+    fallbackPollingId = null;
+}
+
+// 2. FUNGSI UTAMA FETCH AJAX DATA REAL-TIME FROM LARAGON
+function fetchLatestDockData() {
+    fetch('get_realtime.php?t=' + Date.now())
+        .then(response => response.json())
         .then(data => {
-            if (!data.success) throw new Error(data.message || "Gagal menyimpan");
-            return fetch(sisiGetUrl + '?t=' + new Date().getTime(), { cache: 'no-store' })
-                .then(checkResponse => {
-                    if (!checkResponse.ok) throw new Error("HTTP Error");
-                    return checkResponse.json();
-                })
-                .then(savedData => {
-                    const sisiTersimpan = savedData.sisi || data.sisi || sisi;
-                    applySisiToUi(sisiTersimpan);
-
-                    const logBaru = document.createElement('div');
-                    logBaru.className = 'log-item';
-                    logBaru.style.color = '#38bdf8';
-                    logBaru.innerText = `[${new Date().toLocaleTimeString()}] SISTEM | Lokasi dermaga diatur ke ${sisiTersimpan}`;
-                    logContainer.prepend(logBaru);
-                    ambilLogsDatabase();
-                });
+            if (!data) return;
+            applyRealtimeData(data);
         })
-        .catch(() => {
-            if (sisiFeedback) sisiFeedback.innerText = "Gagal menyimpan lokasi dermaga.";
-        })
-        .finally(() => {
-            if (sisiSaveButton) sisiSaveButton.disabled = false;
+        .catch(error => {
+            console.error("Koneksi database Laragon terputus:", error);
+            setWifiDisconnected();
         });
 }
 
-// Gunakan stream real-time bila tersedia, fallback ke polling tiap 500ms
-if (!startRealtimeStream()) {
-    setInterval(ambilDataLokal, 500);
+function applyRealtimeData(data) {
+    const jarak = parseInt(data.jarak, 10) || 0;
+    const status = data.status || "MENUNGGU DATA...";
+    const sisi = data.sisi || "Nilam Utara";
+    const timestamp = data.timestamp_ms || data.timestamp || null;
+
+    if (timestamp && lastRealtimeTimestamp === timestamp) {
+        setWifiConnected();
+        return;
+    }
+
+    lastRealtimeTimestamp = timestamp;
+    document.getElementById("web-jarak").innerText = jarak;
+    document.getElementById("web-sisi").innerText = sisi.replace(/_/g, ' ');
+
+    const selectEl = document.getElementById("dashboard-sisi-input");
+    if (selectEl) {
+        selectEl.value = sisi;
+    }
+
+    setWifiConnected();
+    updateDashboardVisuals(jarak, status);
 }
 
-ambilDataLokal();
+function setWifiConnected() {
+    const wifiIcon = document.getElementById("wifi-icon");
+    if (wifiIcon) wifiIcon.className = "fa-solid fa-wifi icon-connected";
+}
 
-// Polling log dari database MySQL setiap 1000ms agar tampilan UI lebih sinkron dengan DB
-setInterval(ambilLogsDatabase, 1000);
+function setWifiDisconnected() {
+    const wifiIcon = document.getElementById("wifi-icon");
+    if (wifiIcon) wifiIcon.className = "fa-solid fa-wifi icon-disconnected";
+}
 
-// Panggil pertama kali saat startup
-ambilLogsDatabase();
-loadConfiguredSisi();
+function classifyDockState(jarak) {
+    if (jarak >= 0 && jarak <= THRESHOLD_SANDAR_MAX) return "SANDAR";
+    if (jarak > THRESHOLD_LEPAS_MIN) return "LEPAS";
+    return "TRANSISI";
+}
 
-// Jam Digital Header
-setInterval(() => {
-    document.getElementById('clock').innerText = new Date().toLocaleTimeString();
-}, 1000);
+// 3. FUNGSI ANIMASI VISUAL & PEWARNAAN MARQUEE DASHBOARD
+function updateDashboardVisuals(jarak, status) {
+    const statusBox = document.getElementById("web-status");
+    const shipHull = document.getElementById("ship-hull");
+    const logicRows = {
+        sandar: document.getElementById("logic-row-sandar"),
+        transisi: document.getElementById("logic-row-transisi"),
+        lepas: document.getElementById("logic-row-lepas")
+    };
 
-if (sisiSaveButton) {
-    sisiSaveButton.addEventListener('click', saveConfiguredSisi);
-    sisiSaveButton.onclick = saveConfiguredSisi;
+    // Bersihkan semua class style lama sebelum mengganti ke class baru
+    statusBox.className = "status-marquee";
+    shipHull.className = "ship";
+    Object.values(logicRows).forEach(row => {
+        if (row) row.classList.remove("row-active-sandar", "row-active-lepas", "row-active-kosong");
+    });
+
+    const dockState = classifyDockState(jarak);
+    statusBox.innerText = status;
+
+    // Kondisi Real-Time Mengikuti Posisi Jarak Kapal
+    if (dockState === "SANDAR") {
+        statusBox.classList.add("status-m-sandar"); // Ubah warna box status jadi hijau
+        shipHull.classList.add("state-sandar");      // Geser posisi animasi kapal merapat ke dinding
+        if (logicRows.sandar) logicRows.sandar.classList.add("row-active-sandar");
+    } else if (dockState === "TRANSISI") {
+        statusBox.classList.add("status-m-lepas");   // Ubah warna box status jadi kuning
+        shipHull.classList.add("state-transisi");    // Posisi kapal berada di tengah-tengah
+        if (logicRows.transisi) logicRows.transisi.classList.add("row-active-lepas");
+    } else {
+        statusBox.classList.add("status-m-kosong");  // Ubah warna box status jadi merah
+        shipHull.classList.add("state-kosong");      // Kapal menjauh/keluar dari layout dermaga
+        if (logicRows.lepas) logicRows.lepas.classList.add("row-active-kosong");
+    }
+}
+
+function fetchLatestLogs() {
+    fetch("get_logs.php?t=" + Date.now())
+        .then(response => response.json())
+        .then(logs => {
+            if (!Array.isArray(logs)) return;
+            renderLogs(logs);
+        })
+        .catch(error => {
+            console.error("Gagal mengambil data log:", error);
+        });
+}
+
+function renderLogs(logs) {
+    const logContainer = document.getElementById("log-container");
+    if (!logContainer) return;
+
+    if (logs.length === 0) {
+        logContainer.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:10px;">[SISTEM] Belum ada data log.</td></tr>';
+        return;
+    }
+
+    logContainer.innerHTML = logs.map(log => {
+        const sisi = (log.sisi || "Nilam Utara").replace(/_/g, " ");
+        return `
+            <tr>
+                <td>${log.timestamp}</td>
+                <td>${sisi}</td>
+                <td>${log.jarak} cm</td>
+                <td>${log.status}</td>
+            </tr>
+        `;
+    }).join("");
+}
+
+// 4. FUNGSI MENGIRIM INPUT LOKASI DERMAGA KE ESP32 VIA BACKEND
+function saveDermagaLocation() {
+    const selectEl = document.getElementById("dashboard-sisi-input");
+    const feedbackEl = document.getElementById("dashboard-sisi-feedback");
+    const selectedValue = selectEl.value;
+
+    feedbackEl.innerText = "Menyimpan...";
+
+    // Kirim data ke backend set_sisi.php menggunakan POST/GET
+    fetch(`set_sisi.php?sisi=${encodeURIComponent(selectedValue)}`)
+        .then(response => response.text())
+        .then(res => {
+            feedbackEl.innerText = "Lokasi dermaga aktif: " + selectedValue;
+        })
+        .catch(err => {
+            feedbackEl.innerText = "Gagal memperbarui lokasi.";
+            console.error(err);
+        });
 }

@@ -23,9 +23,8 @@ fputcsv($output, array(
     'Waktu Kejadian (Timestamp)', 
     'Sisi Dermaga', 
     'Jarak Sensor (cm)', 
-    'Status Dermaga', 
-    'Kecepatan Pendekatan (m/s)'
-));
+    'Status Dermaga'
+), ';');
 
 // Query semua log kapal untuk direkap di Excel
 $query = "SELECT * FROM `tb_log_kapal` ORDER BY `id` DESC";
@@ -39,9 +38,8 @@ if ($result && $result->num_rows > 0) {
             $row['timestamp'],
             $row['dermaga_sisi'],
             $row['jarak'] . ' cm',
-            $row['status'],
-            round($row['kecepatan'], 2) . ' m/s'
-        ));
+            $row['status']
+        ), ';');
     }
 }
 

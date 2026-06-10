@@ -6,3 +6,5 @@
 build/
 data_jarak.txt
 last_sample.json
+hs_err_pid*.log
+replay_pid*.log

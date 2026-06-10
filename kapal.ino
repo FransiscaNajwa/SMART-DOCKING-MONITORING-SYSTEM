@@ -1,14 +1,19 @@
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <HTTPClient.h>
+#include <LiquidCrystal_I2C.h>
 #include <WiFi.h>
 #include <Wire.h>
+
+// ---------- Konfigurasi Server Lokal Laragon ----------
+const char *officeServerHost = " 192.168.0.189";
+const uint16_t officeServerPort = 8080; 
+const char *serverPath = "dermaga/dermaga/update.php";
+const char *sisiPath = "dermaga/dermaga/get_sisi.php";
 
 // ---------- Pin definitions ----------
 const int pinTrig = 5;
 const int pinEcho = 18;
-const int pinLedSandar = 26; // Green LED (near)
-const int pinLedKosong = 27; // Red LED (far)
+const int pinLedSandar = 27; // Green LED (sandar)
+const int pinLedKosong = 26; // Red LED (lepas)
 const int pinBuzzer = 25;
 const int pinSda = 21;
 const int pinScl = 22;
@@ -17,83 +22,58 @@ const int ledSandarChannel = 1;
 const int ledKosongChannel = 2;
 const int buzzerChannel = 0;
 
-// ---------- OLED ----------
-const uint8_t screenWidth = 128;
-const uint8_t screenHeight = 64;
-const int oledReset = -1;
-const uint8_t oledAddress = 0x3C;
-Adafruit_SSD1306 display(screenWidth, screenHeight, &Wire, oledReset);
-
-// ---------- WiFi / Server ----------
-const char *ssid = "Wifi_TPKN";
-const char *password = "PelindoTPKN";
-const char *serverHost = "192.168.0.105";
-const uint16_t serverPort = 80;
-const char *serverPath = "/dermaga/update.php";
-const char *sisiPath = "/dermaga/get_sisi.php";
+// ---------- LCD ----------
+const uint8_t lcdAddress = 0x27;
+const uint8_t lcdColumns = 20;
+const uint8_t lcdRows = 4;
+LiquidCrystal_I2C display(lcdAddress, lcdColumns, lcdRows);
 
 String serverUrl;
 String sisiUrl;
-String dermagaSisi = "Nilam Utara";
+String dermagaSisi = "";
 String lastKondisi = "";
 unsigned long lastMsg = 0;
 unsigned long lastSisiSync = 0;
+const long transitionNoiseThreshold = 2;
 
 enum ShipState { SHIP_ARRIVE, SHIP_DEPART };
 ShipState currentState = SHIP_DEPART;
 
-// Forward declarations for IntelliSense / C++ parser
+// Tambahkan variabel pendukung untuk monitoring perubahan real-time
+long lastSentDistance = -999; 
+String lastSentStatus = "";
+
+// ---------- FORWARD DECLARATIONS ----------
 void setBuzzer(bool active, unsigned int frequency = 700);
 void setLedSandar(uint8_t brightness);
 void setLedKosong(uint8_t brightness);
-void triggerLedSekali(const String &kondisiBaru);
+void fadeLed(int pin, int channel, uint8_t fromBrightness, uint8_t toBrightness, int stepDelayMs = 6);
+void warmSisi(String sisiBaru);
 void sinkronkanSisiDariWeb(bool force = false);
+void kirimDataKeWeb(long jarakAktif, String statusAktif);
+String encodeQueryValue(const String &value);
 
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
-void attachPwmChannel(int pin, int frequency, int resolution, int channel) {
-  ledcAttach(pin, frequency, resolution);
-}
-
-void writePwmValue(int pin, int channel, uint8_t value) {
-  ledcWrite(pin, value);
-}
-
-void writeToneValue(int pin, int channel, unsigned int frequency) {
-  ledcWriteTone(pin, frequency);
-}
+void attachPwmChannel(int pin, int frequency, int resolution, int channel) { ledcAttach(pin, frequency, resolution); }
+void writePwmValue(int pin, int channel, uint8_t value) { ledcWrite(pin, value); }
+void writeToneValue(int pin, int channel, unsigned int frequency) { ledcWriteTone(pin, frequency); }
 #else
-void attachPwmChannel(int pin, int frequency, int resolution, int channel) {
-  ledcSetup(channel, frequency, resolution);
-  ledcAttachPin(pin, channel);
-}
-
-void writePwmValue(int pin, int channel, uint8_t value) {
-  ledcWrite(channel, value);
-}
-
-void writeToneValue(int pin, int channel, unsigned int frequency) {
-  ledcWriteTone(channel, frequency);
-}
+void attachPwmChannel(int pin, int frequency, int resolution, int channel) { ledcSetup(channel, frequency, resolution); ledcAttachPin(pin, channel); }
+void writePwmValue(int pin, int channel, uint8_t value) { ledcWrite(channel, value); }
+void writeToneValue(int pin, int channel, unsigned int frequency) { ledcWriteTone(channel, frequency); }
 #endif
 
+// ---------- HELPER FUNCTIONS ----------
 String parseJsonSisi(const String &payload) {
   const String key = "\"sisi\"";
   int keyIndex = payload.indexOf(key);
-  if (keyIndex < 0)
-    return "";
-
+  if (keyIndex < 0) return "";
   int colonIndex = payload.indexOf(':', keyIndex + key.length());
-  if (colonIndex < 0)
-    return "";
-
+  if (colonIndex < 0) return "";
   int firstQuote = payload.indexOf('"', colonIndex + 1);
-  if (firstQuote < 0)
-    return "";
-
+  if (firstQuote < 0) return "";
   int secondQuote = payload.indexOf('"', firstQuote + 1);
-  if (secondQuote < 0)
-    return "";
-
+  if (secondQuote < 0) return "";
   String sisi = payload.substring(firstQuote + 1, secondQuote);
   sisi.trim();
   return sisi;
@@ -105,20 +85,51 @@ String formatSisiForQuery(const String &sisi) {
   return encoded;
 }
 
-void renderOled(const String &line1, const String &line2 = "",
-                const String &line3 = "", const String &line4 = "") {
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println(line1);
-  if (line2.length() > 0)
-    display.println(line2);
-  if (line3.length() > 0)
-    display.println(line3);
-  if (line4.length() > 0)
-    display.println(line4);
-  display.display();
+String encodeQueryValue(const String &value) {
+  String encoded = "";
+  const char *hex = "0123456789ABCDEF";
+  for (size_t i = 0; i < value.length(); i++) {
+    char c = value.charAt(i);
+    bool isAlphaNum = (c >= 'a' && c <= 'z') ||
+                      (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9');
+    if (isAlphaNum || c == '-' || c == '_' || c == '.' || c == '~') {
+      encoded += c;
+    } else {
+      encoded += '%';
+      encoded += hex[(c >> 4) & 0x0F];
+      encoded += hex[c & 0x0F];
+    }
+  }
+  return encoded;
+}
+
+String fitLcdLine(const String &text) {
+  String line = text;
+  if (line.length() > lcdColumns) line = line.substring(0, lcdColumns);
+  while (line.length() < lcdColumns) line += ' ';
+  return line;
+}
+
+String lastLcdLines[4] = {"", "", "", ""};
+
+void printLcdLine(uint8_t row, const String &text) {
+  String nextLine = fitLcdLine(text);
+  if (lastLcdLines[row] == nextLine) return;
+  display.setCursor(0, row);
+  display.print(nextLine);
+  lastLcdLines[row] = nextLine;
+}
+
+void resetLcdCache() {
+  for (int i = 0; i < 4; i++) { lastLcdLines[i] = ""; }
+}
+
+void renderOled(const String &line1, const String &line2 = "", const String &line3 = "", const String &line4 = "") {
+  printLcdLine(0, line1);
+  printLcdLine(1, line2);
+  printLcdLine(2, line3);
+  printLcdLine(3, line4);
 }
 
 long readDistance(int trigPin, int echoPin) {
@@ -127,165 +138,231 @@ long readDistance(int trigPin, int echoPin) {
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-
-  long dur = pulseIn(echoPin, HIGH);
+  long dur = pulseIn(echoPin, HIGH, 30000);
   long cm = dur * 0.034 / 2;
-  if (cm <= 0)
-    cm = 300;
+  if (cm <= 0) cm = 300;
   return cm;
 }
 
 void renderStatusScreen(long jarak, const String &status) {
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println("Monitor Dermaga");
-  display.println(dermagaSisi);
-
-  display.setTextSize(2);
-  display.setCursor(0, 20);
-  display.print(jarak);
-  display.print(" cm");
-
-  display.setTextSize(1);
-  display.setCursor(0, 48);
-  display.println(status);
-  display.display();
+  printLcdLine(0, "Monitor Dermaga");
+  printLcdLine(1, "Sisi: " + (dermagaSisi == "" ? "Memuat..." : dermagaSisi));
+  printLcdLine(2, "Jarak: " + String(jarak) + " cm");
+  printLcdLine(3, "Status: " + status);
 }
-
-void renderStatusScreen2(long jarak, const String &masukStatus,
-                         const String &keluarStatus) {
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println("Monitor Dermaga");
-  display.println(dermagaSisi);
-
-  display.setTextSize(2);
-  display.setCursor(0, 20);
-  display.print(jarak);
-  display.print(" cm");
-
-  display.setTextSize(1);
-  display.setCursor(0, 44);
-  display.print("MASUK: ");
-  display.println(masukStatus);
-
-  display.setCursor(0, 54);
-  display.print("KELUAR: ");
-  display.println(keluarStatus);
-  display.display();
-}
-// ==================== REVISI FUNGSI LOGIKA STATUS ====================
 
 String getStatusAktif(long jarak, long prevJarak) {
   if (jarak >= 0 && jarak <= 150) return "KAPAL SANDAR";
-  if (jarak > 200)                return "LEPAS";
+  if (jarak > 200) return "LEPAS";
+  if (prevJarak != -1) {
+    long delta = jarak - prevJarak;
+    if (delta >= transitionNoiseThreshold) return "MULAI LEPAS...";
+    if (delta <= -transitionNoiseThreshold) return "MULAI SANDAR";
+  }
+  if (lastKondisi == "MULAI SANDAR" || lastKondisi == "MULAI LEPAS...") return lastKondisi;
+  return "TRANSISI";
+}
 
-  // Logika mendeteksi arah pergerakan di zona abu-abu (151 - 200 cm)
-  if (prevJarak != -1) { 
-    if (jarak > prevJarak) {
-      return "MULAI LEPAS..."; // Jarak makin besar = kapal menjauh
-    } else if (jarak < prevJarak) {
-      return "MULAI SANDAR";   // Jarak makin kecil = kapal mendekat
+void warmSisi(String sisiBaru) {
+  sisiBaru.replace("_", " ");
+  dermagaSisi = sisiBaru;
+}
+
+void setBuzzer(bool active, unsigned int frequency) {
+  if (active) writeToneValue(pinBuzzer, buzzerChannel, frequency);
+  else writeToneValue(pinBuzzer, buzzerChannel, 0);
+}
+
+void setLedSandar(uint8_t brightness) { writePwmValue(pinLedSandar, ledSandarChannel, brightness); }
+void setLedKosong(uint8_t brightness) { writePwmValue(pinLedKosong, ledKosongChannel, brightness); }
+
+void fadeLed(int pin, int channel, uint8_t fromBrightness, uint8_t toBrightness, int stepDelayMs) {
+  if (fromBrightness == toBrightness) {
+    writePwmValue(pin, channel, fromBrightness);
+    return;
+  }
+  int step = fromBrightness < toBrightness ? 5 : -5;
+  for (int level = fromBrightness; (step > 0) ? (level <= toBrightness) : (level >= toBrightness); level += step) {
+    writePwmValue(pin, channel, level);
+    delay(stepDelayMs);
+  }
+  writePwmValue(pin, channel, toBrightness);
+}
+
+void indikatorMati() {
+  setLedSandar(0);
+  setLedKosong(0);
+  setBuzzer(false);
+}
+
+void selfTestIndikator() {
+  fadeLed(pinLedSandar, ledSandarChannel, 0, 255, 4);
+  fadeLed(pinLedSandar, ledSandarChannel, 255, 0, 4);
+  fadeLed(pinLedKosong, ledKosongChannel, 0, 255, 4);
+  fadeLed(pinLedKosong, ledKosongChannel, 255, 0, 4);
+  setBuzzer(true, 900);
+  delay(200);
+  setBuzzer(false);
+  delay(100);
+}
+
+void sinkronkanSisiDariWeb(bool force) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  unsigned long now = millis();
+  if (!force && now - lastSisiSync < 1000) return;
+  lastSisiSync = now;
+
+  HTTPClient http;
+  String requestUrl = sisiUrl + "?t=" + String(now);
+  http.setTimeout(1500); // Dipercepat responnya agar tidak lag
+  http.begin(requestUrl.c_str());
+  int httpResponseCode = http.GET();
+  if (httpResponseCode > 0) {
+    String payload = http.getString();
+    String sisiBaru = parseJsonSisi(payload);
+    if (sisiBaru.length() > 0) warmSisi(sisiBaru);
+  }
+  http.end();
+}
+
+// Fungsi utama pengiriman data real-time bypass tanpa nunggu delay lama
+void kirimDataKeWeb(long jarakAktif, String statusAktif) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String requestPath = serverUrl + "?jarak=" + String(jarakAktif) +
+                         "&sisi=" + encodeQueryValue(dermagaSisi) +
+                         "&status=" + encodeQueryValue(statusAktif);
+    http.setTimeout(500); 
+    http.begin(requestPath.c_str());
+    int httpResponseCode = http.GET();
+    http.end();
+    
+    if (httpResponseCode > 0) {
+      lastSentDistance = jarakAktif;
+      lastSentStatus = statusAktif;
     }
   }
-  return "MULAI SANDAR"; // Default jika baru booting atau jarak stabil
 }
 
-String getMasukStatus(long jarak, long prevJarak) {
-  String statusAktif = getStatusAktif(jarak, prevJarak);
-  if (statusAktif == "KAPAL SANDAR" || statusAktif == "MULAI SANDAR") {
-    return statusAktif;
-  }
-  return "LEPAS"; // Jika kapal menjauh/pergi, status Masuk dianggap clear/lepas
-}
-
-String getKeluarStatus(long jarak, long prevJarak) {
-  String statusAktif = getStatusAktif(jarak, prevJarak);
-  if (statusAktif == "LEPAS" || statusAktif == "MULAI LEPAS...") {
-    return statusAktif;
-  }
-  return "KAPAL SANDAR"; // Jika kapal mendekat, status Keluar diset stand-by
-}
-
-// ==================== REVISI VOID LOOP (NON-BLOCKING) ====================
-
+// ---------- MAIN LOOP ----------
 void loop() {
   sinkronkanSisiDariWeb();
 
-  // 1. Pembacaan Sensor Ultrasonik secara berkala tanpa interupsi
   static long prevJarak = -1;
   long jarak = readDistance(pinTrig, pinEcho);
-  
-  String statusAktif = getStatusAktif(jarak, prevJarak);
-  String masuk = getMasukStatus(jarak, prevJarak);
-  String keluar = getKeluarStatus(jarak, prevJarak);
+  if (prevJarak == -1) prevJarak = jarak;
 
-  // 2. Logika Output LED Utama (Solid State)
-  if (jarak <= 150) {
-    setLedSandar(255);
-    setLedKosong(0);
-    currentState = SHIP_ARRIVE;
-  } else if (jarak <= 200) {
-    // Di zona transisi (151-200), matikan kedua LED solid, biarkan logika transisi bekerja
-    setLedSandar(0);
-    setLedKosong(0);
-  } else {
-    setLedSandar(0);
-    setLedKosong(255);
-    currentState = SHIP_DEPART;
+  String statusAktif = getStatusAktif(jarak, prevJarak);
+  lastKondisi = statusAktif;
+
+  // LOGIKA REAL-TIME: Jika jarak bergeser atau status berubah, langsung paksa kirim data saat ini juga!
+  if (jarak != lastSentDistance || statusAktif != lastSentStatus) {
+    kirimDataKeWeb(jarak, statusAktif);
   }
 
-  // 3. Update Tampilan Layar OLED 
-  renderStatusScreen2(jarak, masuk, keluar);
-
-  // 4. Pengiriman Data ke Web Server Laragon (Tiap 500ms)
-  unsigned long now = millis();
-  if (now - lastMsg > 500) {
-    lastMsg = now;
-    if (WiFi.status() == WL_CONNECTED) {
-      HTTPClient http;
-      String requestPath = serverUrl + "?jarak=" + String(jarak) +
-                           "&sisi=" + formatSisiForQuery(dermagaSisi) +
-                           "&status=" + statusAktif +
-                           "&statusMasuk=" + masuk +
-                           "&statusKeluar=" + keluar;
-      http.setTimeout(2000); // Dipercepat ke 2 detik agar tidak lagging
-      http.begin(requestPath.c_str());
-      http.GET();
-      http.end();
+  static String lastLedState = "";
+  if (jarak <= 150) {
+    if (lastLedState != "SANDAR") {
+      setLedKosong(0);
+      setLedSandar(0);
+      fadeLed(pinLedSandar, ledSandarChannel, 0, 255, 4);
+      lastLedState = "SANDAR";
+    }
+    currentState = SHIP_ARRIVE;
+  } else if (jarak > 200) {
+    if (lastLedState != "LEPAS") {
+      setLedSandar(0);
+      setLedKosong(0);
+      fadeLed(pinLedKosong, ledKosongChannel, 0, 255, 4);
+      lastLedState = "LEPAS";
+    }
+    currentState = SHIP_DEPART;
+  } else {
+    if (lastLedState != "TRANSISI") {
+      setLedSandar(0);
+      setLedKosong(0);
+      lastLedState = "TRANSISI";
     }
   }
 
-  // 5. Logika Buzzer & Trigger LED Transisi menggunakan Millis (Bebas Delay)
+  renderStatusScreen(jarak, statusAktif);
+
+  // Pengiriman rutin berkala setiap 500ms jika data cenderung diam (statis)
+  unsigned long now = millis();
+  if (now - lastMsg > 500) {
+    lastMsg = now;
+    kirimDataKeWeb(jarak, statusAktif);
+  }
+
   static unsigned long lastBuzzerToggle = 0;
   static bool buzzerState = false;
 
   if (jarak > 0 && jarak <= 150) {
-    triggerLedSekali("KAPAL SANDAR");
+    setLedSandar(255);
+    setLedKosong(0);
     setBuzzer(false);
-  } 
-  else if (jarak > 150 && jarak <= 200) {
-    lastKondisi = statusAktif;
-    
-    // Membuat buzzer berkedip tiap 250ms tanpa menghentikan pembacaan sensor (Non-Blocking)
+  } else if (jarak > 150 && jarak <= 200) {
+    setLedSandar(0);
+    setLedKosong(0);
     if (now - lastBuzzerToggle > 250) {
       lastBuzzerToggle = now;
       buzzerState = !buzzerState;
       setBuzzer(buzzerState, 700);
     }
-  } 
-  else {
-    triggerLedSekali("LEPAS");
+  } else {
+    setLedSandar(0);
+    setLedKosong(255);
     setBuzzer(false);
   }
 
-  // PENTING: Update data prevJarak HANYA di akhir loop setelah semua logika selesai dihitung
-  prevJarak = jarak; 
-  delay(50); // Delay kecil agar pembacaan sensor stabil dan tidak membebani prosesor ESP32
+  prevJarak = jarak;
+  delay(30); // Dioptimalkan sedikit lebih cepat respon loopnya
+}
+
+// ---------- SETUP ----------
+void setup() {
+  Serial.begin(115200);
+  pinMode(pinTrig, OUTPUT);
+  pinMode(pinEcho, INPUT);
+  pinMode(pinLedSandar, OUTPUT);
+  pinMode(pinLedKosong, OUTPUT);
+  pinMode(pinBuzzer, OUTPUT);
+
+  attachPwmChannel(pinLedSandar, 5000, 8, ledSandarChannel);
+  attachPwmChannel(pinLedKosong, 5000, 8, ledKosongChannel);
+  attachPwmChannel(pinBuzzer, 2000, 8, buzzerChannel);
+  indikatorMati();
+
+  Wire.begin(pinSda, pinScl);
+  display.init();
+  display.backlight();
+  display.clear();
+  resetLcdCache();
+
+  renderOled("Booting LCD...", "Inisialisasi OK");
+  selfTestIndikator();
+
+  renderOled("Connect to Wokwi", "Wokwi-GUEST");
+  WiFi.begin("Wokwi-GUEST", "");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print("#");
+  }
+
+  renderOled("WiFi Connected!", WiFi.localIP().toString());
+  delay(1500);
+
+  serverUrl = "http://" + String(officeServerHost) + ":" + String(officeServerPort) + String(serverPath);
+  sisiUrl = "http://" + String(officeServerHost) + ":" + String(officeServerPort) + String(sisiPath);
+
+  sinkronkanSisiDariWeb(true);
+
+  Serial.println();
+  Serial.print("ESP32 IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Server URL: ");
+  Serial.println(serverUrl);
+
+  renderStatusScreen(0, "Sistem Siap");
 }

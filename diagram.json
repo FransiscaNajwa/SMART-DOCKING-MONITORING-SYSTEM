@@ -6,8 +6,8 @@
     { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
     { "type": "wokwi-hc-sr04", "id": "ultrasonic", "top": -150, "left": -120, "attrs": {} },
     { "type": "wokwi-lcd2004", "id": "lcd", "top": -178, "left": 118, "attrs": { "pins": "i2c", "i2cAddress": "0x27" } },
-    { "type": "wokwi-led", "id": "ledSandar", "top": 88, "left": -156, "attrs": { "color": "red" } },
-    { "type": "wokwi-led", "id": "ledKosong", "top": 150, "left": -156, "attrs": { "color": "green" } },
+    { "type": "wokwi-led", "id": "ledSandar", "top": 88, "left": -156, "attrs": { "color": "green" } },
+    { "type": "wokwi-led", "id": "ledKosong", "top": 150, "left": -156, "attrs": { "color": "red" } },
     { "type": "wokwi-buzzer", "id": "buzzer", "top": 128, "left": -255, "attrs": { "mode": "smooth" } }
   ],
   "connections": [
@@ -22,12 +22,12 @@
     [ "esp:D22", "lcd:SCL", "orange", [ "h96", "v-46.8", "h62.4" ] ],
 
     [ "esp:GND.3", "ledSandar:C", "black", [ "h-102", "v36", "h-18" ] ],
-    [ "esp:D26", "ledSandar:A", "green", [ "h-96", "v46", "h-24" ] ],
+    [ "esp:D27", "ledSandar:A", "green", [ "h-96", "v46", "h-24" ] ],
 
-    [ "esp:GND.1", "ledKosong:C", "black", [ "h-96", "v78", "h-24" ] ],
-    [ "esp:D27", "ledKosong:A", "red", [ "h-92", "v90", "h-28" ] ],
+    [ "esp:GND.2", "ledKosong:C", "black", [ "h-96", "v78", "h-24" ] ],
+    [ "esp:D26", "ledKosong:A", "red", [ "h-92", "v90", "h-28" ] ],
 
-    [ "esp:GND.2", "buzzer:1", "black", [ "h-126", "v58", "h-54" ] ],
+    [ "esp:GND.3", "buzzer:1", "black", [ "h-126", "v58", "h-54" ] ],
     [ "esp:D25", "buzzer:2", "orange", [ "h-124", "v48", "h-54" ] ]
   ],
   "dependencies": {}

@@ -4,10 +4,28 @@
 #include <Wire.h>
 
 // ---------- Konfigurasi Server Lokal Laragon ----------
-const char *officeServerHost = " 192.168.0.189";
-const uint16_t officeServerPort = 8080; 
-const char *serverPath = "dermaga/dermaga/update.php";
-const char *sisiPath = "dermaga/dermaga/get_sisi.php";
+// SIMULASI WOKWI + NGROK:
+//   1. Jalankan Laragon (Apache + MySQL)
+//   2. Buka terminal di folder ini dan jalankan: .\run_ngrok.bat
+//   3. Ganti officeServerHost dengan domain ngrok (contoh: xxxx-xx-xxx.ngrok.io)
+//   4. Ubah officeServerPort ke 443 (HTTPS ngrok)
+//   5. Jalankan simulasi Wokwi
+// 
+// SIMULASI WOKWI + LOCALHOST (tanpa ngrok):
+//   - Jalankan Laragon dengan port 80
+//   - Gunakan officeServerHost: 127.0.0.1 atau host.wokwi.internal
+//   - Ubah officeServerPort ke 80
+//
+// HARDWARE REAL (ESP32 fisik):
+//   - Ubah officeServerHost ke IP server/router di jaringan lokal
+//   - Contoh: 192.168.1.100 atau 10.0.0.50
+//   - Gunakan officeServerPort sesuai konfigurasi server Anda
+//
+// CATATAN: Auto-detect protocol -> port 443 = HTTPS, port 80 = HTTP
+const char *officeServerHost = "127.0.0.1";      // Localhost untuk test lokal
+const uint16_t officeServerPort = 80;             // Port Laragon (80=HTTP, 443=HTTPS ngrok)
+const char *serverPath = "/dermaga/dermaga/update.php";
+const char *sisiPath = "/dermaga/dermaga/get_sisi.php";
 
 // ---------- Pin definitions ----------
 const int pinTrig = 5;
@@ -353,8 +371,10 @@ void setup() {
   renderOled("WiFi Connected!", WiFi.localIP().toString());
   delay(1500);
 
-  serverUrl = "http://" + String(officeServerHost) + ":" + String(officeServerPort) + String(serverPath);
-  sisiUrl = "http://" + String(officeServerHost) + ":" + String(officeServerPort) + String(sisiPath);
+  // Auto-detect protocol berdasarkan port (80=HTTP, 443=HTTPS)
+  String protocol = (officeServerPort == 443) ? "https://" : "http://";
+  serverUrl = protocol + String(officeServerHost) + ":" + String(officeServerPort) + String(serverPath);
+  sisiUrl = protocol + String(officeServerHost) + ":" + String(officeServerPort) + String(sisiPath);
 
   sinkronkanSisiDariWeb(true);
 

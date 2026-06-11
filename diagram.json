@@ -30,5 +30,11 @@
     [ "esp:GND.2", "buzzer:1", "black", [ "h-180", "v64", "h-75" ] ],
     [ "esp:D25", "buzzer:2", "orange", [ "h-124", "v48", "h-54" ] ]
   ],
-  "dependencies": {}
+  "dependencies": {},
+  "wokwi": {
+    "version": 1,
+    "clockSpeed": 5000000,
+    "includes": [],
+    "parts": []
+  }
 }

@@ -24,10 +24,10 @@
     [ "esp:GND.3", "ledSandar:C", "black", [ "h-102", "v36", "h-18" ] ],
     [ "esp:D27", "ledSandar:A", "green", [ "h-96", "v46", "h-24" ] ],
 
-    [ "esp:GND.2", "ledKosong:C", "black", [ "h-96", "v78", "h-24" ] ],
-    [ "esp:D26", "ledKosong:A", "red", [ "h-92", "v90", "h-28" ] ],
+    [ "esp:GND.1", "ledKosong:C", "black", [ "h-102", "v98", "h-24" ] ],
+    [ "esp:D26", "ledKosong:A", "red", [ "h-92", "v110", "h-28" ] ],
 
-    [ "esp:GND.3", "buzzer:1", "black", [ "h-126", "v58", "h-54" ] ],
+    [ "esp:GND.2", "buzzer:1", "black", [ "h-180", "v64", "h-75" ] ],
     [ "esp:D25", "buzzer:2", "orange", [ "h-124", "v48", "h-54" ] ]
   ],
   "dependencies": {}
